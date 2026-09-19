@@ -1,0 +1,30 @@
+{
+  "package": "com.zalea.weather",
+  "name": "Zalea Weather",
+  "versionName": "1.0.0",
+  "versionCode": 1,
+  "minPlatformVersion": 1200,
+  "minAPILevel": 1,
+  "icon": "/common/logo.png",
+  "simulationVersion": "default",
+  "deviceTypeList": ["watch"],
+  "features": [
+    { "name": "system.router" },
+    { "name": "system.fetch" },
+    { "name": "system.storage" },
+    { "name": "system.network" },
+    { "name": "system.prompt" }
+  ],
+  "config": {
+    "logLevel": "log",
+    "designWidth": 432
+  },
+  "router": {
+    "entry": "pages/index",
+    "pages": {
+      "pages/index": { "component": "index" },
+      "pages/city": { "component": "city" },
+      "pages/forecast": { "component": "forecast" }
+    }
+  }
+}

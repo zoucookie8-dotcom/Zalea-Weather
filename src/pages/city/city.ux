@@ -1,0 +1,211 @@
+<template>
+  <div class="page">
+
+    <div class="hdr">
+      <text class="back" onclick="goBack">返回</text>
+      <text class="title">选择城市</text>
+      <text class="cnt">{{countText}}</text>
+    </div>
+
+    <div class="searchbar">
+      <input class="srch" type="text" value="{{q}}" placeholder="城市名或拼音"
+             onchange="onSearch" />
+    </div>
+
+    <list class="lst">
+      <list-item class="li" type="item" for="{{shown}}" onclick="pick($item)">
+        <div class="li-l">
+          <text class="li-n">{{$item.n}}</text>
+          <text class="li-p">{{$item.p}}</text>
+        </div>
+        <text class="li-cur" if="{{$item.n === cur}}">当前</text>
+      </list-item>
+      <list-item class="li" type="item" if="{{shown.length === 0}}">
+        <div class="li-l">
+          <text class="li-n">没找到这个城市</text>
+          <text class="li-p">试试拼音，比如 beijing</text>
+        </div>
+      </list-item>
+    </list>
+
+    <div class="ftr">
+      <text class="ftr-t">内置 105 个城市 · 选城市不联网</text>
+    </div>
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import prompt from '@system.prompt'
+import cities from '../../common/cities'
+import { saveCityName, loadCityName } from '../../common/weather'
+
+// 手表屏幕小，默认只列常用城市；输入关键词后在全部 105 个里搜
+const HOT = ['北京', '上海', '广州', '深圳', '杭州', '成都', '重庆', '武汉',
+             '西安', '南京', '天津', '苏州', '长沙', '郑州', '青岛', '沈阳',
+             '大连', '厦门', '福州', '昆明', '合肥', '济南', '哈尔滨', '南昌']
+const MAX_SHOWN = 40
+
+function byName(n) {
+  for (let i = 0; i < cities.length; i++) if (cities[i].n === n) return cities[i]
+  return null
+}
+
+function hotList() {
+  const out = []
+  for (let i = 0; i < HOT.length; i++) {
+    const c = byName(HOT[i])
+    if (c) out.push(c)
+  }
+  return out
+}
+
+export default {
+  private: {
+    q: '',
+    cur: '',
+    shown: hotList(),
+    countText: '常用',
+  },
+
+  async onInit() {
+    // 当前城市从 storage 读，不依赖路由传参
+    const cur = await loadCityName()
+    if (cur) this.cur = cur
+  },
+
+  onSearch(evt) {
+    const q = ((evt && evt.value) || '').trim().toLowerCase()
+    this.q = q
+
+    if (!q) {
+      this.shown = hotList()
+      this.countText = '常用'
+      return
+    }
+
+    const out = []
+    for (let i = 0; i < cities.length && out.length < MAX_SHOWN; i++) {
+      const c = cities[i]
+      if (c.n.indexOf(q) >= 0 || c.py.indexOf(q) >= 0 || c.p.indexOf(q) >= 0) {
+        out.push(c)
+      }
+    }
+    this.shown = out
+    this.countText = out.length ? out.length + ' 个结果' : '无结果'
+  },
+
+  async pick(item) {
+    if (!item || !item.n) return
+    // 等城市名落盘再返回。主页回来时会立刻读它（index.ux 的 syncCity），
+    // 而 storage.set 是异步的 —— 不等就可能读到旧城市，看起来像没切成功。
+    await saveCityName(item.n)
+    prompt.showToast({ message: '已切换到 ' + item.n, duration: 1200 })
+    router.back()
+  },
+
+  goBack() {
+    router.back()
+  },
+}
+</script>
+
+<style>
+.page {
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background-color: #0B1420;
+}
+
+/* 左右留白用 margin-left + 显式宽度，不用 padding：
+   Vela 的 width:100% 是 content-box，padding 不计入宽度，会撑出屏幕被裁掉。 */
+.hdr {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  width: 384px;
+  margin-left: 24px;
+  height: 64px;
+}
+.back {
+  font-size: 22px;
+  color: #6FB4F0;
+}
+.title {
+  font-size: 24px;
+  color: #FFFFFF;
+}
+.cnt {
+  font-size: 16px;
+  color: #6F87A3;
+}
+
+/* 高度 68 就是行高，靠 align-items 把输入框居中；
+   之前用上下 padding 撑，在 content-box 下会变成 88px 高，把下面全顶下去。 */
+.searchbar {
+  flex-direction: row;
+  align-items: center;
+  width: 384px;
+  margin-left: 24px;
+  height: 68px;
+}
+/* 384 - 16(左) - 16(右) = 352 */
+.srch {
+  width: 352px;
+  margin-left: 16px;
+  height: 48px;
+  background-color: #131F2E;
+  border-radius: 12px;
+  color: #E8F0F9;
+  font-size: 20px;
+  padding-left: 16px;
+}
+
+/* 列表吃掉顶栏/搜索栏/底栏之外的全部高度，不写死。
+   写死的话在真机上底栏会被裁掉（见 index.ux 顶部注释）。 */
+.lst {
+  width: 100%;
+  flex-grow: 1;
+}
+.li {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  width: 384px;
+  margin-left: 24px;
+  height: 64px;
+  border-bottom-width: 1px;
+  border-bottom-color: #1B2938;
+}
+.li-l {
+  flex-direction: row;
+  align-items: flex-end;
+}
+.li-n {
+  font-size: 24px;
+  color: #E8F0F9;
+}
+.li-p {
+  font-size: 16px;
+  color: #6F87A3;
+  margin-left: 10px;
+}
+.li-cur {
+  font-size: 16px;
+  color: #7FD1A0;
+}
+
+.ftr {
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 60px;
+}
+.ftr-t {
+  font-size: 16px;
+  color: #4E6880;
+}
+
+</style>

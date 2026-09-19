@@ -1,0 +1,10 @@
+<script>
+export default {
+  onCreate() {
+    console.log('Zalea Weather onCreate')
+  },
+  onDestroy() {
+    console.log('Zalea Weather onDestroy')
+  },
+}
+</script>

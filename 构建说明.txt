@@ -1,0 +1,52 @@
+Zalea Weather · 红米手表 5 离线天气快应用
+==========================================
+
+这个文件夹是项目的源码 + 已构建好的软件包。
+
+目录
+----
+  src/        源码（Vela JS 应用的 .ux 单文件组件）
+  test/       自建检查套件，bash run_all.sh 一键跑
+  dist/       软件包（.rpk）—— 可以直接装到手表上
+  preview/    排版示意图和模拟器截图
+  sign/       签名证书（构建 release 包要用）
+  README.md   完整文档：设计取舍、踩过的坑、验证到什么程度
+
+因为没有带 node_modules/（717 个包，几百 MB），所以第一次构建前要装依赖：
+
+  npm install        # 大约 40 秒
+  npm run build      # 调试包
+  npm run release    # 发布包（需要 sign/ 下的证书）
+
+已经构建好的两个包在 dist/ 里，不重新构建也能直接装：
+
+  com.zalea.weather.debug.1.0.0.rpk     44630 字节（调试包）
+  com.zalea.weather.release.1.0.0.rpk   33646 字节（发布包，自签证书）
+
+注意：aiot build 和 aiot release 都会清空 dist/，后跑的那个会把先跑的产物删掉。
+要同时保留两个包，跑完一次就先把 .rpk 拷到别处。
+
+装到手表 / 模拟器
+----------------
+  export MSYS_NO_PATHCONV=1
+  ADB=<项目>/node_modules/@miwt/adb/bin/win/adb.exe
+  "$ADB" -s emulator-5554 push dist/com.zalea.weather.debug.1.0.0.rpk /data/app/com.zalea.weather.rpk
+  "$ADB" -s emulator-5554 shell "pm install /data/app/com.zalea.weather.rpk"
+
+装成功时 pm install 不打印任何东西，那个 .rpk 被安装器吃掉就是成功。
+
+改名字的地方
+-----------
+应用名和包名都在 src/manifest.json 里：
+
+  "package": "com.zalea.weather"      包名（决定 rpk 文件名和安装身份）
+  "name":    "Zalea Weather"          手表上显示的软件名
+
+改包名等于装成一个新应用：旧包不会被覆盖，得先手动卸掉，
+应用自己存的 storage（上次选的城市）也不会跟过来。
+只改 name 不动 package 就能原地升级。
+
+已知的没做到的部分
+----------------
+见 README.md 末尾「没做到 / 没验证的部分」—— 最主要的是：没有在真机
+（红米手表 5）上跑过，只在官方手表系统镜像的模拟器（QEMU）里验证过。

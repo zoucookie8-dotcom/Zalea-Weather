@@ -1,0 +1,678 @@
+<template>
+  <div class="page">
+
+    <div class="hdr">
+      <text class="back" onclick="goBack">返回</text>
+      <text class="title">7 天预报</text>
+      <text class="city">{{city}}</text>
+    </div>
+
+    <!-- 有预报才渲染列表 -->
+    <list class="lst" if="{{hasDays}}">
+      <list-item class="li" type="item" for="{{rows}}">
+        <div class="li-d">
+          <text class="li-lab">{{$item.label}}</text>
+          <text class="li-date">{{$item.date}}</text>
+        </div>
+        <div class="ic-sm">
+          <div class="s-glow" if="{{$item.ic.glow}}"></div>
+          <div class="s-sun" if="{{$item.ic.sun}}"></div>
+          <div class="s-sun-sm" if="{{$item.ic.sunSm}}"></div>
+          <div class="s-cloud2" if="{{$item.ic.cloud2}}"></div>
+          <div class="s-cloud" if="{{$item.ic.cloud}}"></div>
+          <div class="s-puff1" if="{{$item.ic.cloud}}"></div>
+          <div class="s-puff2" if="{{$item.ic.cloud}}"></div>
+          <div class="s-puff3" if="{{$item.ic.cloud}}"></div>
+          <div class="s-drop1" if="{{$item.ic.d1}}"></div>
+          <div class="s-drop2" if="{{$item.ic.d2}}"></div>
+          <div class="s-drop3" if="{{$item.ic.d3}}"></div>
+          <div class="s-flake1" if="{{$item.ic.f1}}"></div>
+          <div class="s-flake2" if="{{$item.ic.f2}}"></div>
+          <div class="s-flake3" if="{{$item.ic.f3}}"></div>
+          <div class="s-fog1" if="{{$item.ic.g1}}"></div>
+          <div class="s-fog2" if="{{$item.ic.g2}}"></div>
+          <div class="s-fog3" if="{{$item.ic.g3}}"></div>
+          <div class="s-bolt" if="{{$item.ic.bolt}}"></div>
+          <div class="s-bolt2" if="{{$item.ic.bolt}}"></div>
+          <div class="s-bolt3" if="{{$item.ic.bolt}}"></div>
+        </div>
+        <div class="li-t">
+          <text class="li-c">{{$item.text}}</text>
+          <text class="li-pop">{{$item.popText}}</text>
+        </div>
+        <div class="li-r">
+          <text class="li-temp">{{$item.range}}</text>
+        </div>
+      </list-item>
+    </list>
+
+    <!-- 空态：兜底源没有多日预报，或者压根还没抓到过数据 -->
+    <div class="empty" if="{{!hasDays}}">
+      <text class="empty-ic">!</text>
+      <text class="empty-t">{{emptyText}}</text>
+      <text class="empty-s">{{emptySub}}</text>
+    </div>
+
+    <div class="ftr">
+      <text class="ftr-t">{{footText}}</text>
+    </div>
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import {
+  loadCache, loadCityName, withIcons, forecastRows, hhmm,
+} from '../../common/weather'
+
+export default {
+  private: {
+    city: '',
+    rows: [],
+    hasDays: false,
+    emptyText: '',
+    emptySub: '',
+    footText: '',
+  },
+
+  // 这一页只读缓存，不自己发请求：
+  //   1) 保证和主页显示的是同一份数据，不会两边对不上；
+  //   2) 断网时照样能看，符合这个应用"离线可用"的前提；
+  //   3) 省一次网络请求和一份电。
+  // 想刷新就返回主页点一下，那边有完整的取数逻辑。
+  onInit() { this.load() },
+
+  // 页面被复用的话 onInit 不会再跑（比如回主页切了城市又进来），
+  // 所以显示时也读一次。只读本地缓存、不发网络，重复调用没有副作用。
+  onShow() { this.load() },
+
+  async load() {
+    const saved = await loadCityName()
+    if (saved) this.city = saved
+
+    const cached = await loadCache()
+    if (!cached || !cached.now) {
+      this.emptyText = '还没有数据'
+      this.emptySub = '回主页联网获取一次'
+      this.footText = '暂无缓存'
+      this.rows = []
+      this.hasDays = false
+      return
+    }
+
+    // 缓存属于另一个城市就不能拿来充数：主页刚切到上海、还没抓到，
+    // 这里却把北京的 7 天列出来，两边就对不上了。宁可空着说清楚。
+    if (this.city && cached.city && cached.city !== this.city) {
+      this.emptyText = '还没有 ' + this.city + ' 的预报'
+      this.emptySub = '回主页联网获取一次'
+      this.footText = '缓存是' + cached.city + '的'
+      this.rows = []
+      this.hasDays = false
+      return
+    }
+
+    if (cached.city) this.city = cached.city
+
+    const model = withIcons(cached)
+    const rows = forecastRows(model)
+    this.rows = rows
+    this.hasDays = rows.length > 0
+
+    if (!this.hasDays) {
+      this.emptyText = cached.src === 'cn'
+        ? '备用源没有多日预报'
+        : '这次没取到多日预报'
+      this.emptySub = cached.src === 'cn'
+        ? '中国天气网接口只给当天'
+        : '回主页点一下重试'
+    }
+
+    const src = cached.src === 'cn' ? '中国天气网' : 'Open-Meteo'
+    this.footText = '更新 ' + hhmm(cached.ts) + ' · ' + src
+  },
+
+  goBack() {
+    router.back()
+  },
+}
+</script>
+
+<style>
+.page {
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background-color: #0B1420;
+}
+
+/* 左右留白一律用 margin-left + 显式宽度，不用 padding。
+   Vela 的 width:100% 是 content-box，padding 不计入宽度，会撑出屏幕被裁掉。
+   432 - 24(左) - 24(右) = 384。详见 index.ux 顶部注释。 */
+.hdr {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  width: 384px;
+  margin-left: 24px;
+  height: 64px;
+}
+.back {
+  font-size: 22px;
+  color: #6FB4F0;
+}
+.title {
+  font-size: 24px;
+  color: #FFFFFF;
+}
+.city {
+  font-size: 18px;
+  color: #6F87A3;
+}
+
+/* 列表吃掉顶栏/底栏之外的全部高度，不写死。
+   写死的话真机上底栏会被裁掉 —— 可绘制区比屏幕矮 48px，见 index.ux 顶部注释。 */
+.lst {
+  width: 100%;
+  flex-grow: 1;
+}
+.li {
+  flex-direction: row;
+  align-items: center;
+  width: 384px;
+  margin-left: 24px;
+  height: 70px;
+  border-bottom-width: 1px;
+  border-bottom-color: #1B2938;
+}
+
+/* 左：今天/明天/周三 + 日期 */
+.li-d {
+  flex-direction: column;
+  justify-content: center;
+  width: 66px;
+}
+.li-lab {
+  font-size: 20px;
+  color: #E8F0F9;
+}
+.li-date {
+  font-size: 14px;
+  color: #6F87A3;
+  margin-top: 3px;
+}
+
+.ic-sm {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  margin-left: 8px;
+}
+
+/* 中：天气文字 + 降水/风力。flex-grow 吃掉剩下的宽度 */
+.li-t {
+  flex-direction: column;
+  justify-content: center;
+  flex-grow: 1;
+  margin-left: 12px;
+}
+.li-c {
+  font-size: 19px;
+  color: #A9BDD4;
+}
+.li-pop {
+  font-size: 14px;
+  color: #5E7590;
+  margin-top: 4px;
+}
+
+/* 右：高低温。固定宽度 + 右对齐，7 行的小数点才会对齐成一列 */
+.li-r {
+  flex-direction: row;
+  justify-content: flex-end;
+  align-items: center;
+  width: 92px;
+}
+.li-temp {
+  font-size: 21px;
+  color: #FFFFFF;
+}
+
+/* 空态：占满顶栏和底栏之间的全部空间 */
+.empty {
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  width: 352px;
+  margin-left: 40px;
+  flex-grow: 1;
+}
+.empty-ic {
+  font-size: 52px;
+  color: #E8B65A;
+}
+.empty-t {
+  font-size: 22px;
+  color: #A9BDD4;
+  text-align: center;
+  margin-top: 14px;
+}
+.empty-s {
+  font-size: 16px;
+  color: #5E7590;
+  text-align: center;
+  margin-top: 8px;
+}
+
+.ftr {
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 52px;
+}
+.ftr-t {
+  font-size: 16px;
+  color: #6F87A3;
+}
+
+/* ---------- 图标部件 ----------
+   几何全部用百分比，所以 .ic-lg(108px) 和 .ic-sm(40px) 共用同一套配方。
+
+   云是"三个包 + 一块底座"四片拼出来的，四片都是图标框的直接子节点 —— 别塞回
+   一个 .p-cloud 容器里。以前就是套着的，大图标(108px)看着正常，40px 的小图标
+   上嵌套的百分比算错，三个包糊成一个 14x14 的方块，整朵云就废了。 */
+.p-glow {
+  position: absolute;
+  left: 18%;
+  top: 2%;
+  width: 64%;
+  height: 64%;
+  border-radius: 50%;
+  background-color: #FFC53D;
+  opacity: 0.28;
+}
+.p-sun {
+  position: absolute;
+  left: 29%;
+  top: 14%;
+  width: 42%;
+  height: 42%;
+  border-radius: 50%;
+  background-color: #FFC53D;
+}
+.p-sun-sm {
+  position: absolute;
+  left: 54%;
+  top: 3%;
+  width: 34%;
+  height: 34%;
+  border-radius: 50%;
+  background-color: #FFC53D;
+}
+
+/* 阴天时垫在后面那朵灰云，只从左上角露一点 */
+.p-cloud2 {
+  position: absolute;
+  left: 0%;
+  top: 6%;
+  width: 70%;
+  height: 44%;
+  border-radius: 50%;
+  background-color: #8FA6C0;
+}
+
+/* 云的三片包 + 底座 */
+.p-cloud {
+  position: absolute;
+  left: 4%;
+  top: 46%;
+  width: 90%;
+  height: 30%;
+  border-radius: 40%;
+  background-color: #DCE7F5;
+}
+.p-puff1 {
+  position: absolute;
+  left: 6%;
+  top: 30%;
+  width: 36%;
+  height: 36%;
+  border-radius: 50%;
+  background-color: #DCE7F5;
+}
+.p-puff2 {
+  position: absolute;
+  left: 28%;
+  top: 14%;
+  width: 44%;
+  height: 48%;
+  border-radius: 50%;
+  background-color: #DCE7F5;
+}
+.p-puff3 {
+  position: absolute;
+  left: 56%;
+  top: 32%;
+  width: 36%;
+  height: 36%;
+  border-radius: 50%;
+  background-color: #DCE7F5;
+}
+
+/* 雨点落在云底下（云的底边在 76%）。宽度别小于 10%，再窄在 40px 上就不到 4px 了 */
+.p-drop1 {
+  position: absolute;
+  left: 30%;
+  top: 78%;
+  width: 10%;
+  height: 18%;
+  border-radius: 50%;
+  background-color: #5AA9F0;
+}
+.p-drop2 {
+  position: absolute;
+  left: 45%;
+  top: 80%;
+  width: 10%;
+  height: 18%;
+  border-radius: 50%;
+  background-color: #5AA9F0;
+}
+.p-drop3 {
+  position: absolute;
+  left: 60%;
+  top: 78%;
+  width: 10%;
+  height: 18%;
+  border-radius: 50%;
+  background-color: #5AA9F0;
+}
+
+.p-flake1 {
+  position: absolute;
+  left: 30%;
+  top: 78%;
+  width: 13%;
+  height: 13%;
+  border-radius: 50%;
+  background-color: #FFFFFF;
+}
+.p-flake2 {
+  position: absolute;
+  left: 44%;
+  top: 84%;
+  width: 13%;
+  height: 13%;
+  border-radius: 50%;
+  background-color: #FFFFFF;
+}
+.p-flake3 {
+  position: absolute;
+  left: 58%;
+  top: 78%;
+  width: 13%;
+  height: 13%;
+  border-radius: 50%;
+  background-color: #FFFFFF;
+}
+
+/* 雾：只有三根横杠，不画云，否则糊成一坨 */
+.p-fog1 {
+  position: absolute;
+  left: 6%;
+  top: 30%;
+  width: 88%;
+  height: 10%;
+  border-radius: 40%;
+  background-color: #C7D6E8;
+}
+.p-fog2 {
+  position: absolute;
+  left: 16%;
+  top: 47%;
+  width: 68%;
+  height: 10%;
+  border-radius: 40%;
+  background-color: #C7D6E8;
+}
+.p-fog3 {
+  position: absolute;
+  left: 8%;
+  top: 64%;
+  width: 84%;
+  height: 10%;
+  border-radius: 40%;
+  background-color: #C7D6E8;
+}
+
+/* 闪电：从云底往下的一道折线 */
+.p-bolt {
+  position: absolute;
+  left: 56%;
+  top: 62%;
+  width: 13%;
+  height: 16%;
+  border-radius: 30%;
+  background-color: #FFD24A;
+}
+.p-bolt2 {
+  position: absolute;
+  left: 47%;
+  top: 72%;
+  width: 13%;
+  height: 16%;
+  border-radius: 30%;
+  background-color: #FFD24A;
+}
+.p-bolt3 {
+  position: absolute;
+  left: 53%;
+  top: 82%;
+  width: 11%;
+  height: 13%;
+  border-radius: 30%;
+  background-color: #FFD24A;
+}
+
+/* ---------- 小图标部件（40px）----------
+   这一套是给 .ic-sm 用的，几何全部写死整数像素，不用百分比。
+
+   为什么不复用上面那套 .p-*：那套是百分比，在 108px 的主视觉上没问题，但放到
+   40px 上 Vela 会算错 —— 实测三个"包"只剩两个、位置整体偏移、还被图标框右边缘
+   切掉，雨点和底座干脆一个像素都没有。同 20 个部件的配方，108px 好好的，40px 就散架。
+   40px 下百分比会落到 14.4px 这种小数上，多半就折在这里。
+
+   所以小图标单独一套：整数像素，框 40x40，看得见就是看得见。 */
+.s-glow {
+  position: absolute;
+  left: 7px;
+  top: 1px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background-color: #FFC53D;
+  opacity: 0.28;
+}
+.s-sun {
+  position: absolute;
+  left: 11px;
+  top: 6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background-color: #FFC53D;
+}
+.s-sun-sm {
+  position: absolute;
+  left: 21px;
+  top: 1px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background-color: #FFC53D;
+}
+
+/* 阴天垫在后面那朵灰云，只从左上角露一点 */
+.s-cloud2 {
+  position: absolute;
+  left: 0px;
+  top: 2px;
+  width: 28px;
+  height: 18px;
+  border-radius: 50%;
+  background-color: #8FA6C0;
+}
+
+/* 云：三个包 + 一块底座，四片都是图标框的直接子节点 */
+.s-cloud {
+  position: absolute;
+  left: 2px;
+  top: 19px;
+  width: 36px;
+  height: 12px;
+  border-radius: 6px;
+  background-color: #DCE7F5;
+}
+.s-puff1 {
+  position: absolute;
+  left: 3px;
+  top: 12px;
+  width: 14px;
+  height: 15px;
+  border-radius: 50%;
+  background-color: #DCE7F5;
+}
+.s-puff2 {
+  position: absolute;
+  left: 11px;
+  top: 6px;
+  width: 18px;
+  height: 19px;
+  border-radius: 50%;
+  background-color: #DCE7F5;
+}
+.s-puff3 {
+  position: absolute;
+  left: 22px;
+  top: 13px;
+  width: 14px;
+  height: 15px;
+  border-radius: 50%;
+  background-color: #DCE7F5;
+}
+
+/* 雨点落在云底下（云底边在 31px） */
+.s-drop1 {
+  position: absolute;
+  left: 12px;
+  top: 31px;
+  width: 4px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: #5AA9F0;
+}
+.s-drop2 {
+  position: absolute;
+  left: 18px;
+  top: 32px;
+  width: 4px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: #5AA9F0;
+}
+.s-drop3 {
+  position: absolute;
+  left: 24px;
+  top: 31px;
+  width: 4px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: #5AA9F0;
+}
+
+.s-flake1 {
+  position: absolute;
+  left: 12px;
+  top: 31px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background-color: #FFFFFF;
+}
+.s-flake2 {
+  position: absolute;
+  left: 18px;
+  top: 34px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background-color: #FFFFFF;
+}
+.s-flake3 {
+  position: absolute;
+  left: 24px;
+  top: 31px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background-color: #FFFFFF;
+}
+
+/* 雾：三条横杠，不画云 */
+.s-fog1 {
+  position: absolute;
+  left: 2px;
+  top: 12px;
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background-color: #C7D6E8;
+}
+.s-fog2 {
+  position: absolute;
+  left: 6px;
+  top: 19px;
+  width: 28px;
+  height: 4px;
+  border-radius: 2px;
+  background-color: #C7D6E8;
+}
+.s-fog3 {
+  position: absolute;
+  left: 3px;
+  top: 26px;
+  width: 34px;
+  height: 4px;
+  border-radius: 2px;
+  background-color: #C7D6E8;
+}
+
+/* 闪电：从云底往下的一道折线 */
+.s-bolt {
+  position: absolute;
+  left: 22px;
+  top: 26px;
+  width: 5px;
+  height: 7px;
+  border-radius: 2px;
+  background-color: #FFD24A;
+}
+.s-bolt2 {
+  position: absolute;
+  left: 18px;
+  top: 30px;
+  width: 5px;
+  height: 7px;
+  border-radius: 2px;
+  background-color: #FFD24A;
+}
+.s-bolt3 {
+  position: absolute;
+  left: 21px;
+  top: 34px;
+  width: 5px;
+  height: 6px;
+  border-radius: 2px;
+  background-color: #FFD24A;
+}
+</style>

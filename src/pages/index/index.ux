@@ -1,0 +1,918 @@
+<template>
+  <div class="page">
+
+    <!-- 顶栏：城市名 / 数据源标记 -->
+    <div class="hdr">
+      <text class="city" onclick="openCity">{{city}}</text>
+      <text class="badge-live" if="{{!offline}}">{{srcLabel}}</text>
+      <text class="badge-off" if="{{offline}}">离线</text>
+    </div>
+
+    <!-- 主体：有数据才渲染 -->
+    <div class="body" if="{{hasData}}">
+
+      <!-- 主视觉 -->
+      <div class="hero" onclick="refresh">
+        <div class="ic-lg">
+          <div class="p-glow" if="{{model.icNow.glow}}"></div>
+          <div class="p-sun" if="{{model.icNow.sun}}"></div>
+          <div class="p-sun-sm" if="{{model.icNow.sunSm}}"></div>
+          <div class="p-cloud2" if="{{model.icNow.cloud2}}"></div>
+          <div class="p-cloud" if="{{model.icNow.cloud}}"></div>
+          <div class="p-puff1" if="{{model.icNow.cloud}}"></div>
+          <div class="p-puff2" if="{{model.icNow.cloud}}"></div>
+          <div class="p-puff3" if="{{model.icNow.cloud}}"></div>
+          <div class="p-drop1" if="{{model.icNow.d1}}"></div>
+          <div class="p-drop2" if="{{model.icNow.d2}}"></div>
+          <div class="p-drop3" if="{{model.icNow.d3}}"></div>
+          <div class="p-flake1" if="{{model.icNow.f1}}"></div>
+          <div class="p-flake2" if="{{model.icNow.f2}}"></div>
+          <div class="p-flake3" if="{{model.icNow.f3}}"></div>
+          <div class="p-fog1" if="{{model.icNow.g1}}"></div>
+          <div class="p-fog2" if="{{model.icNow.g2}}"></div>
+          <div class="p-fog3" if="{{model.icNow.g3}}"></div>
+          <div class="p-bolt" if="{{model.icNow.bolt}}"></div>
+          <div class="p-bolt2" if="{{model.icNow.bolt}}"></div>
+          <div class="p-bolt3" if="{{model.icNow.bolt}}"></div>
+        </div>
+        <div class="hero-txt">
+          <text class="temp">{{model.now.temp}}</text>
+          <text class="deg">°</text>
+        </div>
+        <text class="cond">{{model.now.text}}</text>
+      </div>
+
+      <!-- 详情三格 -->
+      <div class="row3">
+        <div class="cell">
+          <text class="k">体感</text>
+          <text class="v">{{feelsText}}</text>
+        </div>
+        <div class="cell">
+          <text class="k">湿度</text>
+          <text class="v">{{humText}}</text>
+        </div>
+        <div class="cell">
+          <text class="k">风力</text>
+          <text class="v">{{windText}}</text>
+        </div>
+      </div>
+
+      <!-- 预报。整条可点，进 7 天预报页 -->
+      <div class="fc" onclick="openForecast">
+        <block for="{{model.days}}">
+          <div class="fc-col">
+            <text class="fc-k">{{$item.label}}</text>
+            <div class="ic-sm">
+              <div class="s-glow" if="{{$item.ic.glow}}"></div>
+              <div class="s-sun" if="{{$item.ic.sun}}"></div>
+              <div class="s-sun-sm" if="{{$item.ic.sunSm}}"></div>
+              <div class="s-cloud2" if="{{$item.ic.cloud2}}"></div>
+              <div class="s-cloud" if="{{$item.ic.cloud}}"></div>
+              <div class="s-puff1" if="{{$item.ic.cloud}}"></div>
+              <div class="s-puff2" if="{{$item.ic.cloud}}"></div>
+              <div class="s-puff3" if="{{$item.ic.cloud}}"></div>
+              <div class="s-drop1" if="{{$item.ic.d1}}"></div>
+              <div class="s-drop2" if="{{$item.ic.d2}}"></div>
+              <div class="s-drop3" if="{{$item.ic.d3}}"></div>
+              <div class="s-flake1" if="{{$item.ic.f1}}"></div>
+              <div class="s-flake2" if="{{$item.ic.f2}}"></div>
+              <div class="s-flake3" if="{{$item.ic.f3}}"></div>
+              <!-- 雾的部件不能漏：漏了雾天这一格就是个空框（wmo.js 里 fog 只画横杠不画云） -->
+              <div class="s-fog1" if="{{$item.ic.g1}}"></div>
+              <div class="s-fog2" if="{{$item.ic.g2}}"></div>
+              <div class="s-fog3" if="{{$item.ic.g3}}"></div>
+              <div class="s-bolt" if="{{$item.ic.bolt}}"></div>
+              <div class="s-bolt2" if="{{$item.ic.bolt}}"></div>
+              <div class="s-bolt3" if="{{$item.ic.bolt}}"></div>
+            </div>
+            <text class="fc-v">{{$item.max}}° / {{$item.min}}°</text>
+          </div>
+        </block>
+        <div class="fc-none" if="{{noForecast}}">
+          <text class="fc-k">{{forecastHint}}</text>
+        </div>
+        <div class="fc-more" if="{{!noForecast}}">
+          <text class="fc-more-t">></text>
+        </div>
+      </div>
+    </div>
+
+    <!-- 空态：没缓存又没网 -->
+    <div class="empty" if="{{!hasData}}">
+      <text class="empty-ic">!</text>
+      <text class="empty-t">{{emptyText}}</text>
+      <text class="empty-s">点按重试</text>
+    </div>
+
+    <!-- 底栏 -->
+    <div class="ftr" onclick="refresh">
+      <text class="ftr-t">{{footText}}</text>
+    </div>
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import prompt from '@system.prompt'
+import cities from '../../common/cities'
+// 城市名由 city.ux 负责写，这里只读，所以不引 saveCityName
+import {
+  fetchWeather, saveCache, loadCache, cacheFresh,
+  loadCityName, withIcons, hhmm,
+} from '../../common/weather'
+
+const DEFAULT_CITY = '北京'
+
+function findCity(name) {
+  for (let i = 0; i < cities.length; i++) if (cities[i].n === name) return cities[i]
+  return null
+}
+
+export default {
+  private: {
+    city: DEFAULT_CITY,
+    model: null,
+    hasData: false,
+    offline: false,
+    busy: false,
+    pending: false,
+    ready: false,
+    srcLabel: '',
+    feelsText: '--',
+    humText: '--',
+    windText: '--',
+    noForecast: false,
+    forecastHint: '',
+    emptyText: '还没有数据，联网后会自动获取',
+    footText: '正在获取…',
+  },
+
+  onInit() {
+    this.boot()
+  },
+
+  // onShow 有两个来路，得分开对待：
+  //   1) 抬腕亮屏 —— 什么都不能做，否则每抬一次手腕打一次网络；
+  //   2) 从城市页返回 —— 用户刚选完城市，必须把新城市读回来。
+  // 区分办法：读一次本地存储看城市变没变（不发网络），变了才抓数据。
+  //
+  // 早先这里只判"缓存过期才刷新"，从城市页返回时缓存正好是新鲜的，
+  // 于是整个 onShow 什么都不做 —— 城市页写的城市名根本没机会被主页看见。
+  // 主页只认 this.city，而 this.city 只在 boot() 里读过一次存储，
+  // 所以选了新城市也得等应用重启才生效。这就是"切不了城市"的根因。
+  onShow() {
+    // 应用刚起来时 onShow 会先于 boot() 的 await 跑一次，那时城市还没定，
+    // 放它进来会和 boot() 抢着 pull。
+    if (!this.ready) return
+    this.syncCity()
+  },
+
+  async syncCity() {
+    const saved = await loadCityName()
+    if (saved && saved !== this.city && findCity(saved)) {
+      this.city = saved
+      // 旧城市的数据不能挂在新城市名下：顶着"上海"显示北京的 27°，
+      // 比先空着更糟 —— 用户没法判断到底切没切成功。
+      this.dropData()
+      this.pull(true)
+      return
+    }
+    // 城市没变，那就是抬腕亮屏：缓存过期才刷新，新鲜就不动
+    if (this.hasData && !cacheFresh(this.model)) this.pull(false)
+  },
+
+  dropData() {
+    this.model = null
+    this.hasData = false
+    this.offline = false
+    this.emptyText = '正在获取 ' + this.city + ' 的天气…'
+    this.footText = '正在获取…'
+  },
+
+  async boot() {
+    const saved = await loadCityName()
+    if (saved && findCity(saved)) this.city = saved
+
+    const cached = await loadCache()
+    // 只判 cached.now 是不够的：缓存里存的可能是上一个城市。切了城市但没抓到
+    // 新数据就退出，下次启动会把旧城市的数据铺到新城市的标题底下。
+    if (cached && cached.now && cached.city === this.city) {
+      // 先把缓存铺满屏幕，再在后台刷新。
+      // pull 不 await：缓存已经可见了，没必要让首屏等网络。
+      this.apply(withIcons(cached))
+      this.pull(false)
+    } else {
+      this.pull(true)
+    }
+    // 到这里城市才算定下来，此前不许 onShow 抢着 pull
+    this.ready = true
+  },
+
+  async pull(showLoading) {
+    const city = findCity(this.city) || findCity(DEFAULT_CITY)
+    if (!city) return
+
+    // 已经有一个请求在路上：记一笔待办，等它回来再抓。
+    // 早先这里是直接 return，于是"切城市时正好在抓旧城市"这一下就被吞了 ——
+    // 新城市的请求永远排不上队，界面就一直停在旧城市。
+    if (this.busy) { this.pending = true; return }
+
+    this.busy = true
+    if (showLoading) this.footText = '正在获取…'
+
+    try {
+      const model = await fetchWeather(city)
+      // 请求飞出去到回来这段时间里用户可能又换了城市。这份结果已经配不上
+      // 当前选择了，扔掉 —— 否则它会把刚切过去的城市又顶回来。
+      if (city.n === this.city) {
+        this.apply(withIcons(model))
+        saveCache(model)
+      }
+    } catch (e) {
+      // 失败同理：旧城市的失败不该污染新城市的状态
+      if (city.n === this.city) {
+        this.offline = true
+        if (this.hasData) {
+          prompt.showToast({ message: '获取失败，显示离线数据', duration: 2000 })
+        } else {
+          this.emptyText = '联网失败，请检查网络后重试'
+        }
+        this.footText = this.hasData
+          ? '离线 · 数据时间 ' + hhmm(this.model.ts)
+          : '获取失败'
+      }
+    }
+
+    this.busy = false
+    if (this.pending) { this.pending = false; this.pull(false) }
+  },
+
+  apply(model) {
+    if (!model || !model.now) return
+
+    const n = model.now
+    this.model = model
+    this.hasData = true
+    // 这里原本有一句 `this.city = model.city || this.city`，删掉。
+    // 它让"谁最后返回谁说了算"：一份晚到的旧城市响应能把用户刚选的城市改回去。
+    // 城市只由用户的选择决定（this.city），数据只负责填内容 ——
+    // pull() 已经保证不会拿别的城市的数据来调 apply。
+    this.srcLabel = model.src === 'cn' ? '中国天气网' : 'Open-Meteo'
+
+    this.feelsText = (n.feels === null || n.feels === undefined) ? '--' : n.feels + '°'
+    this.humText = (n.hum === null || n.hum === undefined) ? '--' : n.hum + '%'
+    this.windText = (n.ws === null || n.ws === undefined)
+      ? (n.wd || '--')
+      : ((n.wd || '') + n.ws + '级')
+
+    const days = model.days || []
+    this.noForecast = days.length === 0
+    this.forecastHint = '备用源无多日预报'
+
+    // 只有拿到实时数据才算在线；兜底源也算在线
+    this.offline = false
+    this.footText = '更新 ' + hhmm(model.ts) + ' · 点按刷新'
+  },
+
+  refresh() {
+    this.pull(true)
+  },
+
+  openCity() {
+    router.push({ uri: '/pages/city' })
+  },
+
+  // 预报页只读缓存，所以这里不用先确保数据是新的 —— 它显示的
+  // 就是主页此刻显示的同一份数据
+  openForecast() {
+    router.push({ uri: '/pages/forecast' })
+  },
+}
+</script>
+
+<style>
+.page {
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background-color: #0B1420;
+}
+
+/* ---------- 顶栏 ---------- */
+/* 左右留白一律用 margin-left + 显式宽度，不用 padding。
+   Vela 的 width:100% 是 content-box —— padding 不计入宽度，会撑出屏幕被裁掉：
+   实测 width:100%(432) + padding 24/24 的元素实际占 480px，右侧内容被切。
+   432 - 24(左) - 24(右) = 384。下面几行同理。 */
+.hdr {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  width: 384px;
+  margin-left: 24px;
+  height: 64px;
+}
+.city {
+  font-size: 26px;
+  color: #FFFFFF;
+}
+.badge-live {
+  font-size: 16px;
+  color: #7FD1A0;
+  background-color: #16302A;
+  border-radius: 10px;
+  padding-left: 10px;
+  padding-right: 10px;
+  padding-top: 3px;
+  padding-bottom: 3px;
+}
+.badge-off {
+  font-size: 16px;
+  color: #E8B65A;
+  background-color: #33280F;
+  border-radius: 10px;
+  padding-left: 10px;
+  padding-right: 10px;
+  padding-top: 3px;
+  padding-bottom: 3px;
+}
+
+/* ---------- 主体 ---------- */
+/* 主体和主视觉都用 flex-grow 吸收剩余高度，不写死高度。
+   原因：应用能拿到的可绘制区域比屏幕矮 —— 模拟器上实测屏幕 432x514，
+   但页面只拿到 432x466（底部约 48px 被系统占掉）。写死 394 会让底栏被裁掉。
+   顶栏64 / 详情92 / 预报116 / 底栏56 固定，剩下的全部给主体和主视觉。 */
+.body {
+  flex-direction: column;
+  width: 100%;
+  flex-grow: 1;
+}
+
+.hero {
+  flex-direction: row;
+  align-items: center;
+  width: 372px;
+  margin-left: 30px;
+  flex-grow: 1;
+}
+.hero-txt {
+  flex-direction: row;
+  align-items: flex-start;
+  margin-left: 14px;
+}
+.temp {
+  font-size: 96px;
+  color: #FFFFFF;
+}
+.deg {
+  font-size: 44px;
+  color: #FFFFFF;
+  margin-top: 12px;
+}
+.cond {
+  font-size: 24px;
+  color: #A9BDD4;
+  margin-left: 10px;
+}
+
+/* ---------- 三格详情 ---------- */
+/* 容器高度 = 单元高 + margin-top：靠 margin 把详情行和预报行分开，
+   否则两行的卡片会紧贴在一起，视觉上融成三根长条。 */
+.row3 {
+  flex-direction: row;
+  width: 384px;
+  margin-left: 24px;
+  height: 92px;
+}
+.cell {
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  flex-grow: 1;
+  height: 78px;
+  margin-top: 14px;
+  background-color: #131F2E;
+  border-radius: 14px;
+  margin-left: 5px;
+  margin-right: 5px;
+}
+.k {
+  font-size: 16px;
+  color: #7C90A8;
+}
+.v {
+  font-size: 24px;
+  color: #E8F0F9;
+  margin-top: 4px;
+}
+
+/* ---------- 预报 ---------- */
+.fc {
+  flex-direction: row;
+  width: 384px;
+  margin-left: 24px;
+  height: 116px;
+}
+.fc-col {
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  flex-grow: 1;
+  height: 108px;
+  margin-top: 8px;
+  background-color: #131F2E;
+  border-radius: 14px;
+  margin-left: 5px;
+  margin-right: 5px;
+}
+/* "更多" 入口，占 30px，三张卡片各让出 10px，仍然读得清。
+   特意做成一颗小胶囊：
+     1) 背景由 div 画出来，一定会渲染 —— 不依赖字库；
+     2) 里面的箭头用 ASCII ">"，不用 "›"（U+203A）。
+   之前用 "›" 在模拟器上实测一个像素都没画出来：编译产物里
+   width/color 都在，但那一格整块是背景色 —— 表盘字库里没有这个码位，
+   缺字是静默的，编译和静态检查都不会报。 */
+.fc-more {
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  width: 30px;
+  height: 108px;
+  margin-top: 8px;
+  background-color: #14283C;
+  border-radius: 14px;
+}
+.fc-more-t {
+  font-size: 26px;
+  color: #6FB4F0;
+}
+.fc-none {
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  flex-grow: 1;
+  height: 108px;
+  margin-top: 8px;
+  background-color: #131F2E;
+  border-radius: 14px;
+  margin-left: 5px;
+  margin-right: 5px;
+}
+.fc-k {
+  font-size: 16px;
+  color: #7C90A8;
+}
+.fc-v {
+  font-size: 20px;
+  color: #E8F0F9;
+  margin-top: 4px;
+}
+
+/* ---------- 空态 ---------- */
+/* 同上：不写死高度，占满顶栏和底栏之间的全部空间 */
+.empty {
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  width: 352px;
+  margin-left: 40px;
+  flex-grow: 1;
+}
+.empty-ic {
+  font-size: 56px;
+  color: #E8B65A;
+}
+.empty-t {
+  font-size: 22px;
+  color: #A9BDD4;
+  text-align: center;
+  margin-top: 14px;
+}
+.empty-s {
+  font-size: 18px;
+  color: #5E7590;
+  margin-top: 8px;
+}
+
+
+/* ---------- 底栏 ---------- */
+.ftr {
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 56px;
+}
+.ftr-t {
+  font-size: 18px;
+  color: #6F87A3;
+}
+
+/* ---------- 图标通用 ---------- */
+.ic-lg {
+  position: relative;
+  width: 108px;
+  height: 108px;
+}
+.ic-sm {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  margin-top: 6px;
+}
+
+.p-glow {
+  position: absolute;
+  left: 18%;
+  top: 2%;
+  width: 64%;
+  height: 64%;
+  border-radius: 50%;
+  background-color: #FFC53D;
+  opacity: 0.28;
+}
+.p-sun {
+  position: absolute;
+  left: 29%;
+  top: 14%;
+  width: 42%;
+  height: 42%;
+  border-radius: 50%;
+  background-color: #FFC53D;
+}
+.p-sun-sm {
+  position: absolute;
+  left: 54%;
+  top: 3%;
+  width: 34%;
+  height: 34%;
+  border-radius: 50%;
+  background-color: #FFC53D;
+}
+
+/* 阴天时垫在后面那朵灰云，只从左上角露一点 */
+.p-cloud2 {
+  position: absolute;
+  left: 0%;
+  top: 6%;
+  width: 70%;
+  height: 44%;
+  border-radius: 50%;
+  background-color: #8FA6C0;
+}
+
+/* 云的三片包 + 底座 */
+.p-cloud {
+  position: absolute;
+  left: 4%;
+  top: 46%;
+  width: 90%;
+  height: 30%;
+  border-radius: 40%;
+  background-color: #DCE7F5;
+}
+.p-puff1 {
+  position: absolute;
+  left: 6%;
+  top: 30%;
+  width: 36%;
+  height: 36%;
+  border-radius: 50%;
+  background-color: #DCE7F5;
+}
+.p-puff2 {
+  position: absolute;
+  left: 28%;
+  top: 14%;
+  width: 44%;
+  height: 48%;
+  border-radius: 50%;
+  background-color: #DCE7F5;
+}
+.p-puff3 {
+  position: absolute;
+  left: 56%;
+  top: 32%;
+  width: 36%;
+  height: 36%;
+  border-radius: 50%;
+  background-color: #DCE7F5;
+}
+
+/* 雨点落在云底下（云的底边在 76%）。宽度别小于 10%，再窄在 40px 上就不到 4px 了 */
+.p-drop1 {
+  position: absolute;
+  left: 30%;
+  top: 78%;
+  width: 10%;
+  height: 18%;
+  border-radius: 50%;
+  background-color: #5AA9F0;
+}
+.p-drop2 {
+  position: absolute;
+  left: 45%;
+  top: 80%;
+  width: 10%;
+  height: 18%;
+  border-radius: 50%;
+  background-color: #5AA9F0;
+}
+.p-drop3 {
+  position: absolute;
+  left: 60%;
+  top: 78%;
+  width: 10%;
+  height: 18%;
+  border-radius: 50%;
+  background-color: #5AA9F0;
+}
+
+.p-flake1 {
+  position: absolute;
+  left: 30%;
+  top: 78%;
+  width: 13%;
+  height: 13%;
+  border-radius: 50%;
+  background-color: #FFFFFF;
+}
+.p-flake2 {
+  position: absolute;
+  left: 44%;
+  top: 84%;
+  width: 13%;
+  height: 13%;
+  border-radius: 50%;
+  background-color: #FFFFFF;
+}
+.p-flake3 {
+  position: absolute;
+  left: 58%;
+  top: 78%;
+  width: 13%;
+  height: 13%;
+  border-radius: 50%;
+  background-color: #FFFFFF;
+}
+
+/* 雾：只有三根横杠，不画云，否则糊成一坨 */
+.p-fog1 {
+  position: absolute;
+  left: 6%;
+  top: 30%;
+  width: 88%;
+  height: 10%;
+  border-radius: 40%;
+  background-color: #C7D6E8;
+}
+.p-fog2 {
+  position: absolute;
+  left: 16%;
+  top: 47%;
+  width: 68%;
+  height: 10%;
+  border-radius: 40%;
+  background-color: #C7D6E8;
+}
+.p-fog3 {
+  position: absolute;
+  left: 8%;
+  top: 64%;
+  width: 84%;
+  height: 10%;
+  border-radius: 40%;
+  background-color: #C7D6E8;
+}
+
+/* 闪电：从云底往下的一道折线 */
+.p-bolt {
+  position: absolute;
+  left: 56%;
+  top: 62%;
+  width: 13%;
+  height: 16%;
+  border-radius: 30%;
+  background-color: #FFD24A;
+}
+.p-bolt2 {
+  position: absolute;
+  left: 47%;
+  top: 72%;
+  width: 13%;
+  height: 16%;
+  border-radius: 30%;
+  background-color: #FFD24A;
+}
+.p-bolt3 {
+  position: absolute;
+  left: 53%;
+  top: 82%;
+  width: 11%;
+  height: 13%;
+  border-radius: 30%;
+  background-color: #FFD24A;
+}
+
+/* ---------- 小图标部件（40px）----------
+   这一套是给 .ic-sm 用的，几何全部写死整数像素，不用百分比。
+
+   为什么不复用上面那套 .p-*：那套是百分比，在 108px 的主视觉上没问题，但放到
+   40px 上 Vela 会算错 —— 实测三个"包"只剩两个、位置整体偏移、还被图标框右边缘
+   切掉，雨点和底座干脆一个像素都没有。同 20 个部件的配方，108px 好好的，40px 就散架。
+   40px 下百分比会落到 14.4px 这种小数上，多半就折在这里。
+
+   所以小图标单独一套：整数像素，框 40x40，看得见就是看得见。 */
+.s-glow {
+  position: absolute;
+  left: 7px;
+  top: 1px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background-color: #FFC53D;
+  opacity: 0.28;
+}
+.s-sun {
+  position: absolute;
+  left: 11px;
+  top: 6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background-color: #FFC53D;
+}
+.s-sun-sm {
+  position: absolute;
+  left: 21px;
+  top: 1px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background-color: #FFC53D;
+}
+
+/* 阴天垫在后面那朵灰云，只从左上角露一点 */
+.s-cloud2 {
+  position: absolute;
+  left: 0px;
+  top: 2px;
+  width: 28px;
+  height: 18px;
+  border-radius: 50%;
+  background-color: #8FA6C0;
+}
+
+/* 云：三个包 + 一块底座，四片都是图标框的直接子节点 */
+.s-cloud {
+  position: absolute;
+  left: 2px;
+  top: 19px;
+  width: 36px;
+  height: 12px;
+  border-radius: 6px;
+  background-color: #DCE7F5;
+}
+.s-puff1 {
+  position: absolute;
+  left: 3px;
+  top: 12px;
+  width: 14px;
+  height: 15px;
+  border-radius: 50%;
+  background-color: #DCE7F5;
+}
+.s-puff2 {
+  position: absolute;
+  left: 11px;
+  top: 6px;
+  width: 18px;
+  height: 19px;
+  border-radius: 50%;
+  background-color: #DCE7F5;
+}
+.s-puff3 {
+  position: absolute;
+  left: 22px;
+  top: 13px;
+  width: 14px;
+  height: 15px;
+  border-radius: 50%;
+  background-color: #DCE7F5;
+}
+
+/* 雨点落在云底下（云底边在 31px） */
+.s-drop1 {
+  position: absolute;
+  left: 12px;
+  top: 31px;
+  width: 4px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: #5AA9F0;
+}
+.s-drop2 {
+  position: absolute;
+  left: 18px;
+  top: 32px;
+  width: 4px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: #5AA9F0;
+}
+.s-drop3 {
+  position: absolute;
+  left: 24px;
+  top: 31px;
+  width: 4px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: #5AA9F0;
+}
+
+.s-flake1 {
+  position: absolute;
+  left: 12px;
+  top: 31px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background-color: #FFFFFF;
+}
+.s-flake2 {
+  position: absolute;
+  left: 18px;
+  top: 34px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background-color: #FFFFFF;
+}
+.s-flake3 {
+  position: absolute;
+  left: 24px;
+  top: 31px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background-color: #FFFFFF;
+}
+
+/* 雾：三条横杠，不画云 */
+.s-fog1 {
+  position: absolute;
+  left: 2px;
+  top: 12px;
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background-color: #C7D6E8;
+}
+.s-fog2 {
+  position: absolute;
+  left: 6px;
+  top: 19px;
+  width: 28px;
+  height: 4px;
+  border-radius: 2px;
+  background-color: #C7D6E8;
+}
+.s-fog3 {
+  position: absolute;
+  left: 3px;
+  top: 26px;
+  width: 34px;
+  height: 4px;
+  border-radius: 2px;
+  background-color: #C7D6E8;
+}
+
+/* 闪电：从云底往下的一道折线 */
+.s-bolt {
+  position: absolute;
+  left: 22px;
+  top: 26px;
+  width: 5px;
+  height: 7px;
+  border-radius: 2px;
+  background-color: #FFD24A;
+}
+.s-bolt2 {
+  position: absolute;
+  left: 18px;
+  top: 30px;
+  width: 5px;
+  height: 7px;
+  border-radius: 2px;
+  background-color: #FFD24A;
+}
+.s-bolt3 {
+  position: absolute;
+  left: 21px;
+  top: 34px;
+  width: 5px;
+  height: 6px;
+  border-radius: 2px;
+  background-color: #FFD24A;
+}
+</style>
