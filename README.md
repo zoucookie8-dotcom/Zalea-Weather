@@ -12,19 +12,6 @@
 
 ---
 
-## ⚠️ 先说一件重要的事：你给的参考链接里没有快应用文档
-
-你提到的 `https://github.com/open-vela/docs` **不包含任何 `.ux` 快应用的内容**。
-那个仓库是 openvela 的**原生开发**文档 —— Kconfig 配置、NuttX 移植、LVGL 控件、
-驱动适配那一套 C 语言的东西。快应用是跑在 QuickJS 上的另一套体系，两边不相干。
-
-你说的「**系统网络 → HTTPS 请求**」这个路径对应的真正文档是：
-
-> **https://iot.mi.com/vela/quickapp/zh/features/network/fetch.html**
-
-这套文档的根目录是 <https://iot.mi.com/vela/quickapp/zh/>，本项目所有 API 用法都以它为准。
-另外官方样例仓库 `open-vela/packages_apps` 的 `wearable/` 目录下有一批真实的手表快应用，
-比文档更能说明实际写法。
 
 ---
 
